@@ -32,18 +32,14 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
         onScanSaved: () {
           _closeScanner();
           setState(() {
-            _currentIndex = 2; // Switch to Inventory tab to see newly scanned item
+            _currentIndex = 2;
           });
         },
       );
     }
 
     final screens = [
-      DashboardScreen(
-        onOpenScan: _openScanner,
-        onOpenInventory: () => setState(() => _currentIndex = 2),
-      ),
-      // Dummy index 1 for Scan trigger
+      const DashboardScreen(),
       const SizedBox.shrink(),
       InventoryScreen(
         onBack: () => setState(() => _currentIndex = 0),
@@ -51,7 +47,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
     ];
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.getBackground(context),
       body: IndexedStack(
         index: _currentIndex,
         children: screens,
@@ -59,13 +55,13 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
       bottomNavigationBar: Container(
         height: 72,
         decoration: BoxDecoration(
-          color: AppColors.background,
-          border: const Border(
-            top: BorderSide(color: AppColors.border, width: 1),
+          color: AppColors.getBottomNavBg(context),
+          border: Border(
+            top: BorderSide(color: AppColors.getBorder(context), width: 1),
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.3),
+              color: Colors.black.withValues(alpha: Theme.of(context).brightness == Brightness.dark ? 0.3 : 0.05),
               blurRadius: 10,
               offset: const Offset(0, -2),
             ),
@@ -75,25 +71,23 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              // Tab 0: Home (Matching image.png)
               _buildNavItem(
+                context: context,
                 index: 0,
                 label: 'Home',
                 icon: CupertinoIcons.home,
                 activeIcon: CupertinoIcons.house_fill,
               ),
-
-              // Tab 1: Scan (Opens live camera scan)
               _buildNavItem(
+                context: context,
                 index: 1,
                 label: 'Scan',
                 icon: CupertinoIcons.camera,
                 activeIcon: CupertinoIcons.camera_fill,
                 onTap: _openScanner,
               ),
-
-              // Tab 2: Inventory (Matching image.png)
               _buildNavItem(
+                context: context,
                 index: 2,
                 label: 'Inventory',
                 icon: CupertinoIcons.archivebox,
@@ -107,6 +101,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
   }
 
   Widget _buildNavItem({
+    required BuildContext context,
     required int index,
     required String label,
     required IconData icon,
@@ -114,6 +109,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
     VoidCallback? onTap,
   }) {
     final bool isSelected = _currentIndex == index && index != 1;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
 
     return GestureDetector(
       onTap: onTap ?? () => setState(() => _currentIndex = index),
@@ -123,16 +119,15 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Active pill background for Home (matching image.png)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
               decoration: BoxDecoration(
-                color: isSelected ? const Color(0xFF232C4B) : Colors.transparent,
+                color: AppColors.getNavPillBg(context, isSelected),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Icon(
                 isSelected ? activeIcon : icon,
-                color: isSelected ? AppColors.buttonFoto : AppColors.textSecondary,
+                color: isSelected ? AppColors.buttonFoto : AppColors.getTextSecondary(context),
                 size: 22,
               ),
             ),
@@ -140,7 +135,9 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
             Text(
               label,
               style: TextStyle(
-                color: isSelected ? Colors.white : AppColors.textSecondary,
+                color: isSelected
+                    ? (isDark ? Colors.white : AppColors.buttonFoto)
+                    : AppColors.getTextSecondary(context),
                 fontSize: 11,
                 fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
               ),

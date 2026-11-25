@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
+import '../database/inventory_database.dart';
 import '../models/inventory_item.dart';
 import '../security/gps_security_service.dart';
 
@@ -12,7 +14,8 @@ class InventoryRepository extends ChangeNotifier {
   static InventoryRepository get instance => _instance;
 
   InventoryRepository._internal() {
-    _initDefaultItems();
+    _initDefaultItemsSynchronous();
+    _loadFromDatabase();
   }
 
   final List<InventoryItem> _items = [];
@@ -20,33 +23,16 @@ class InventoryRepository extends ChangeNotifier {
 
   List<InventoryItem> get items => List.unmodifiable(_items);
 
-  // Dynamic Dashboard Metrics
-  int get saleStockCount {
-    return _items.where((item) => item.isForSale).fold(0, (sum, item) => sum + item.quantity);
-  }
-
-  int get lowStockCount {
-    return _items.where((item) => item.isLowStock).fold(0, (sum, item) => sum + item.quantity);
-  }
-
-  int get outOfStockCount {
-    return _items.where((item) => item.isOutOfStock).length;
-  }
-
   int get totalItemsCount {
     return _items.fold(0, (sum, item) => sum + item.quantity);
   }
 
-  int get totalUniqueProducts => _items.length;
-
-  void _initDefaultItems() {
+  void _initDefaultItemsSynchronous() {
     if (_isInitialized) return;
     _isInitialized = true;
 
     final now = DateTime.now();
-
     _items.addAll([
-      // Dashboard commodities (matching image.png)
       InventoryItem(
         id: 'item-beras',
         name: 'Beras',
@@ -103,104 +89,60 @@ class InventoryRepository extends ChangeNotifier {
         updatedAt: now.subtract(const Duration(minutes: 45)),
         updatedBy: 'Budi Santoso',
       ),
-
-      // Inventory commodities (matching image copy 2.png)
-      InventoryItem(
-        id: 'item-coca-cola',
-        name: 'Coca Cola',
-        category: 'Beverages',
-        warehouse: 'Warehouse A',
-        quantity: 450,
-        lowStockThreshold: 100,
-        isForSale: true,
-        unit: 'cases',
-        packageDetail: '12 oz cans',
-        expirationDate: '08/27',
-        updatedAt: now.subtract(const Duration(hours: 6)),
-        updatedBy: 'Budi Santoso',
-      ),
-      InventoryItem(
-        id: 'item-doritos',
-        name: 'Doritos',
-        category: 'Snacks',
-        warehouse: 'Warehouse B',
-        quantity: 120,
-        lowStockThreshold: 100,
-        isForSale: true,
-        unit: 'bags',
-        packageDetail: 'Nacho Cheese',
-        expirationDate: '02/27',
-        updatedAt: now.subtract(const Duration(hours: 8)),
-        updatedBy: 'Budi Santoso',
-      ),
-      InventoryItem(
-        id: 'item-lass',
-        name: 'Lass',
-        category: 'Dairy',
-        warehouse: 'Cold Room 1',
-        quantity: 85,
-        lowStockThreshold: 100,
-        isForSale: true,
-        unit: 'units',
-        packageDetail: 'Whole Milk',
-        expirationDate: '11/26',
-        updatedAt: now.subtract(const Duration(hours: 12)),
-        updatedBy: 'Luqman',
-      ),
-      InventoryItem(
-        id: 'item-kitkat',
-        name: 'KitKat',
-        category: 'Confectionery',
-        warehouse: 'Warehouse C',
-        quantity: 310,
-        lowStockThreshold: 100,
-        isForSale: true,
-        unit: 'boxes',
-        packageDetail: '4-finger bar',
-        expirationDate: '05/27',
-        updatedAt: now.subtract(const Duration(hours: 18)),
-        updatedBy: 'Luqman',
-      ),
     ]);
   }
 
-  // Update Stock Quantity Dinamis
-  void updateItemQuantity(String id, int newQuantity) {
+  Future<void> _loadFromDatabase() async {
+    try {
+      final dbItems = await InventoryDatabase.instance.getAllItems();
+      if (dbItems.isNotEmpty) {
+        _items.clear();
+        _items.addAll(dbItems);
+        notifyListeners();
+      } else {
+        for (var item in _items) {
+          unawaited(InventoryDatabase.instance.insertItem(item));
+        }
+      }
+    } catch (e) {
+      debugPrint('Database load notice: $e');
+    }
+  }
+
+  Future<void> updateItemQuantity(String id, int newQuantity) async {
     final index = _items.indexWhere((element) => element.id == id);
     if (index != -1) {
-      _items[index] = _items[index].copyWith(
+      final updated = _items[index].copyWith(
         quantity: newQuantity < 0 ? 0 : newQuantity,
         updatedAt: DateTime.now(),
-        updatedBy: 'Budi (Admin)',
+        updatedBy: 'Budi',
       );
+      _items[index] = updated;
+      await InventoryDatabase.instance.updateItem(updated);
       notifyListeners();
     }
   }
 
-  // Update Gambar & Detail Item
-  void updateItemDetails({
-    required String id,
-    String? name,
-    String? category,
-    String? warehouse,
-    int? quantity,
-    String? imagePath,
-  }) {
+  Future<void> deleteItem(String id) async {
     final index = _items.indexWhere((element) => element.id == id);
     if (index != -1) {
-      _items[index] = _items[index].copyWith(
-        name: name,
-        category: category,
-        warehouse: warehouse,
-        quantity: quantity,
-        imagePath: imagePath,
-        updatedAt: DateTime.now(),
-      );
+      final item = _items[index];
+      if (item.imagePath != null && item.imagePath!.isNotEmpty) {
+        try {
+          final file = File(item.imagePath!);
+          if (file.existsSync()) {
+            file.deleteSync();
+          }
+        } catch (e) {
+          debugPrint('Error deleting image file: $e');
+        }
+      }
+      _items.removeAt(index);
+      await InventoryDatabase.instance.deleteItem(id);
       notifyListeners();
     }
   }
 
-  // Add Item from Camera Scan
   Future<InventoryItem> addNewItemFromScan({
     required String name,
     required String category,
@@ -212,8 +154,11 @@ class InventoryRepository extends ChangeNotifier {
     required String imagePath,
     GpsSecurityReport? gpsReport,
   }) async {
+    final newItemId = const Uuid().v4();
+    final now = DateTime.now();
+
     final newItem = InventoryItem(
-      id: const Uuid().v4(),
+      id: newItemId,
       name: name,
       category: category,
       warehouse: warehouse,
@@ -222,18 +167,34 @@ class InventoryRepository extends ChangeNotifier {
       packageDetail: packageDetail,
       expirationDate: expirationDate,
       imagePath: imagePath,
-      updatedAt: DateTime.now(),
-      updatedBy: 'Budi (Scanner)',
+      updatedAt: now,
+      updatedBy: 'Budi',
       gpsReport: gpsReport,
     );
 
-    // Sisipkan di posisi pertama agar langsung terlihat di atas list
+    if (gpsReport != null) {
+      final historyEntry = ScanHistoryEntry(
+        id: const Uuid().v4(),
+        itemId: newItemId,
+        itemName: name,
+        quantity: quantity,
+        imagePath: imagePath,
+        scannedAt: now,
+        latitude: gpsReport.latitude,
+        longitude: gpsReport.longitude,
+        accuracy: gpsReport.accuracy,
+        isMocked: gpsReport.isMocked,
+        signature: gpsReport.securitySignature,
+      );
+      await InventoryDatabase.instance.insertScanHistory(historyEntry);
+    }
+
     _items.insert(0, newItem);
+    await InventoryDatabase.instance.insertItem(newItem);
     notifyListeners();
     return newItem;
   }
 
-  // Persistent Image Directory
   Future<String> saveCapturedImageBytes(Uint8List bytes) async {
     final dir = await getApplicationDocumentsDirectory();
     final photosDir = Directory(p.join(dir.path, 'inventory_photos'));
@@ -247,7 +208,6 @@ class InventoryRepository extends ChangeNotifier {
     return filePath;
   }
 
-  // Generate Sample Image for items if needed
   Future<void> ensureSampleImagesForSeedItems() async {
     try {
       final dir = await getApplicationDocumentsDirectory();
@@ -261,7 +221,6 @@ class InventoryRepository extends ChangeNotifier {
           final samplePath = p.join(photosDir.path, '${item.id}.jpg');
           final file = File(samplePath);
           if (!file.existsSync()) {
-            // Generate a lightweight placeholder JPEG
             final dummyBytes = _generateDummyJpegBytes(item.name);
             await file.writeAsBytes(dummyBytes);
           }
@@ -275,7 +234,6 @@ class InventoryRepository extends ChangeNotifier {
   }
 
   static Uint8List _generateDummyJpegBytes(String label) {
-    // Basic valid tiny 1x1 or sample JPEG payload
     return Uint8List.fromList([
       0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01,
       0x01, 0x01, 0x00, 0x48, 0x00, 0x48, 0x00, 0x00, 0xFF, 0xDB, 0x00, 0x43,
@@ -293,15 +251,4 @@ class InventoryRepository extends ChangeNotifier {
     ]);
   }
 
-  // Export CSV Data
-  String generateCsv() {
-    final buffer = StringBuffer();
-    buffer.writeln('ID,Name,Category,Warehouse,Quantity,Unit,PackageDetail,ExpirationDate,UpdatedBy,UpdatedAt');
-    for (var item in _items) {
-      buffer.writeln(
-        '${item.id},"${item.name}","${item.category}","${item.warehouse}",${item.quantity},"${item.unit}","${item.packageDetail}","${item.expirationDate}","${item.updatedBy}","${item.updatedAt.toIso8601String()}"'
-      );
-    }
-    return buffer.toString();
-  }
 }

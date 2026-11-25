@@ -2,11 +2,10 @@ import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import '../../../core/ai/yolo_counter_service.dart';
+import 'package:geolocator/geolocator.dart';
 import '../../../core/repository/inventory_repository.dart';
 import '../../../core/security/gps_security_service.dart';
 import '../../../core/theme/app_theme.dart';
-import 'widgets/gps_audit_modal.dart';
 import 'widgets/scan_confirm_save_modal.dart';
 
 class ScanProductsScreen extends StatefulWidget {
@@ -23,10 +22,8 @@ class ScanProductsScreen extends StatefulWidget {
   State<ScanProductsScreen> createState() => _ScanProductsScreenState();
 }
 
-class _ScanProductsScreenState extends State<ScanProductsScreen>
-    with SingleTickerProviderStateMixin {
+class _ScanProductsScreenState extends State<ScanProductsScreen> {
   final GpsSecurityService _gpsService = GpsSecurityService();
-  final YoloCounterService _yoloService = YoloCounterService();
 
   CameraController? _cameraController;
   List<CameraDescription> _cameras = [];
@@ -34,43 +31,167 @@ class _ScanProductsScreenState extends State<ScanProductsScreen>
   bool _isProcessingCapture = false;
 
   GpsSecurityReport? _gpsReport;
-  List<DetectedObject> _detectedObjects = [];
-
-  late AnimationController _laserAnimController;
-  late Animation<double> _laserAnimation;
 
   @override
   void initState() {
     super.initState();
-    _initLaserAnimation();
-    _loadGpsReport();
+    _enforceStrictGpsSecurity();
     _initCamera();
-    _runSimulatedDetections();
   }
 
-  void _initLaserAnimation() {
-    _laserAnimController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2400),
-    )..repeat(reverse: true);
+  Future<void> _enforceStrictGpsSecurity() async {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
 
-    _laserAnimation = Tween<double>(begin: 0.05, end: 0.95).animate(
-      CurvedAnimation(parent: _laserAnimController, curve: Curves.easeInOut),
-    );
-  }
+      final isServiceEnabled = await _gpsService.isGpsServiceEnabled();
+      if (!isServiceEnabled) {
+        if (!mounted) return;
+        final shouldOpenSettings = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: AppColors.getSurfaceCard(ctx),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Row(
+              children: [
+                const Icon(CupertinoIcons.location_slash_fill, color: AppColors.red, size: 26),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Text(
+                    'GPS Wajib Dinyalakan',
+                    style: TextStyle(
+                      color: AppColors.getTextPrimary(ctx),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            content: Text(
+              'Audit inventaris gudang mewajibkan GPS fisik perangkat aktif untuk memverifikasi keabsahan lokasi scan.',
+              style: TextStyle(
+                color: AppColors.getTextSecondary(ctx),
+                fontSize: 14,
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text(
+                  'Tolak / Batal',
+                  style: TextStyle(
+                    color: AppColors.getTextSecondary(ctx),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              ElevatedButton.icon(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.buttonFoto,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  elevation: 0,
+                ),
+                icon: const Icon(CupertinoIcons.settings, size: 16),
+                label: const Text('Nyalakan GPS', style: TextStyle(fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
+        );
 
-  Future<void> _loadGpsReport() async {
-    final report = await _gpsService.getValidatedLocation();
-    if (mounted) {
+        if (shouldOpenSettings != true) {
+          if (mounted) {
+            widget.onBack();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Akses Scan Dibatalkan: Anda menolak mengaktifkan GPS.'),
+                duration: Duration(seconds: 3),
+              ),
+            );
+          }
+          return;
+        }
+
+        await _gpsService.openLocationSettings();
+      }
+
+      final permission = await _gpsService.checkAndRequestPermission();
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          widget.onBack();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('⚠️ Akses scan ditolak: Izin lokasi GPS tidak diberikan.'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+
+      final report = await _gpsService.getValidatedLocation();
+      if (!mounted) return;
+
+      if (report.isMocked || report.securityFlags.contains('MOCK_LOCATION_ACTIVE')) {
+        await showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: AppColors.getSurfaceCard(ctx),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Row(
+              children: [
+                const Icon(CupertinoIcons.exclamationmark_triangle_fill, color: AppColors.red, size: 28),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Text(
+                    'Fake GPS Terdeteksi!',
+                    style: TextStyle(
+                      color: AppColors.getTextPrimary(ctx),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            content: Text(
+              'Sistem mendeteksi penggunaan Fake GPS / Mock Location pada perangkat. Akses scan ditolak demi integritas data inventaris.',
+              style: TextStyle(
+                color: AppColors.getTextSecondary(ctx),
+                fontSize: 14,
+              ),
+            ),
+            actions: [
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.red,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                child: const Text('Kembali ke Dashboard', style: TextStyle(fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
+        );
+
+        if (mounted) {
+          widget.onBack();
+        }
+        return;
+      }
+
       setState(() => _gpsReport = report);
-    }
+    });
   }
 
   Future<void> _initCamera() async {
     try {
       _cameras = await availableCameras();
       if (_cameras.isNotEmpty) {
-        // Cari kamera belakang
         final backCamera = _cameras.firstWhere(
           (c) => c.lensDirection == CameraLensDirection.back,
           orElse: () => _cameras.first,
@@ -94,20 +215,6 @@ class _ScanProductsScreenState extends State<ScanProductsScreen>
     }
   }
 
-  void _runSimulatedDetections() {
-    final boxes = _yoloService.simulateLiveFrameDetection(
-      320,
-      480,
-      baseCount: 5,
-    );
-    setState(() => _detectedObjects = boxes);
-  }
-
-  void _toggleMockGps() {
-    _gpsService.toggleMockSimulation(!_gpsService.isMockSimulationActive);
-    _loadGpsReport();
-  }
-
   Future<void> _handleCaptureFoto() async {
     if (_isProcessingCapture) return;
     setState(() => _isProcessingCapture = true);
@@ -116,33 +223,22 @@ class _ScanProductsScreenState extends State<ScanProductsScreen>
 
     try {
       if (_cameraController != null && _cameraController!.value.isInitialized) {
-        // Ambil foto riil dari hardware kamera
         final XFile file = await _cameraController!.takePicture();
         imageBytes = await file.readAsBytes();
       } else {
-        // Dynamic fallback snapshot bytes
         imageBytes = _generateDynamicFeedSnapshot();
       }
 
-      // Simpan berkas gambar secara persisten
       final savedPath = await InventoryRepository.instance.saveCapturedImageBytes(imageBytes);
-
-      // Jalankan model inferensi AI
-      final finalBoxes = await _yoloService.processSnapshotInference(
-        320,
-        480,
-        targetCount: _detectedObjects.isNotEmpty ? _detectedObjects.length : 6,
-      );
 
       setState(() => _isProcessingCapture = false);
 
       if (!mounted) return;
 
-      // Buka modal konfirmasi & simpan ke inventaris
       ScanConfirmSaveModal.show(
         context,
         imagePath: savedPath,
-        detectedCount: finalBoxes.length,
+        initialQuantity: 1,
         gpsReport: _gpsReport,
         onSaved: () {
           widget.onScanSaved();
@@ -155,7 +251,6 @@ class _ScanProductsScreenState extends State<ScanProductsScreen>
   }
 
   Uint8List _generateDynamicFeedSnapshot() {
-    // Generate valid JPEG bytes
     return Uint8List.fromList([
       0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01,
       0x01, 0x01, 0x00, 0x48, 0x00, 0x48, 0x00, 0x00, 0xFF, 0xDB, 0x00, 0x43,
@@ -173,18 +268,8 @@ class _ScanProductsScreenState extends State<ScanProductsScreen>
     ]);
   }
 
-  void _handleOpenLokasi() {
-    if (_gpsReport == null) return;
-    GpsAuditModal.show(
-      context,
-      report: _gpsReport!,
-      onToggleSimulation: _toggleMockGps,
-    );
-  }
-
   @override
   void dispose() {
-    _laserAnimController.dispose();
     _cameraController?.dispose();
     super.dispose();
   }
@@ -192,11 +277,10 @@ class _ScanProductsScreenState extends State<ScanProductsScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.getBackground(context),
       body: SafeArea(
         child: Column(
           children: [
-            // Top Header: Close button [X] & Title "Scan" (Matching image copy.png)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Row(
@@ -205,26 +289,26 @@ class _ScanProductsScreenState extends State<ScanProductsScreen>
                     width: 38,
                     height: 38,
                     decoration: BoxDecoration(
-                      color: AppColors.surfaceCard,
+                      color: AppColors.getSurfaceCard(context),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppColors.border),
+                      border: Border.all(color: AppColors.getBorder(context)),
                     ),
                     child: IconButton(
                       padding: EdgeInsets.zero,
                       onPressed: widget.onBack,
-                      icon: const Icon(
+                      icon: Icon(
                         CupertinoIcons.xmark,
-                        color: AppColors.textPrimary,
+                        color: AppColors.getTextPrimary(context),
                         size: 18,
                       ),
                     ),
                   ),
-                  const Expanded(
+                  Expanded(
                     child: Center(
                       child: Text(
                         'Scan',
                         style: TextStyle(
-                          color: AppColors.textPrimary,
+                          color: AppColors.getTextPrimary(context),
                           fontSize: 18,
                           fontWeight: FontWeight.w700,
                         ),
@@ -236,144 +320,34 @@ class _ScanProductsScreenState extends State<ScanProductsScreen>
               ),
             ),
 
-            // Viewfinder Viewport (Matching image copy.png: Full viewport, NO static box image!)
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                 child: Container(
                   width: double.infinity,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF161B26),
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFF161B26)
+                        : const Color(0xFF0F172A),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFF232A3B)),
+                    border: Border.all(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? const Color(0xFF232A3B)
+                          : const Color(0xFFCBD5E1),
+                    ),
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(16),
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        // Live Camera Preview or Active Simulated Feed
                         _isCameraInitialized && _cameraController != null
                             ? CameraPreview(_cameraController!)
                             : _buildDynamicCameraViewport(),
 
-                        // Overlay Reticle & Bounding Boxes
-                        CustomPaint(
-                          painter: _CameraReticlePainter(
-                            detectedObjects: _detectedObjects,
-                          ),
+                        const CustomPaint(
+                          painter: _CameraReticlePainter(),
                         ),
-
-                        // Animated Laser Line
-                        AnimatedBuilder(
-                          animation: _laserAnimation,
-                          builder: (context, _) {
-                            return Positioned(
-                              top: MediaQuery.of(context).size.height * 0.6 * _laserAnimation.value,
-                              left: 20,
-                              right: 20,
-                              child: Container(
-                                height: 2,
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      Colors.transparent,
-                                      AppColors.buttonFoto.withValues(alpha: 0.9),
-                                      Colors.white,
-                                      AppColors.buttonFoto.withValues(alpha: 0.9),
-                                      Colors.transparent,
-                                    ],
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: AppColors.buttonFoto.withValues(alpha: 0.8),
-                                      blurRadius: 10,
-                                      spreadRadius: 2,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-
-                        // Realtime Count Badge
-                        Positioned(
-                          top: 14,
-                          left: 14,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.6),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: Colors.white24),
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: const BoxDecoration(
-                                    color: AppColors.green,
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  'AI Live: ${_detectedObjects.length} Objek',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-
-                        // GPS Security Status Indicator at bottom of viewport
-                        if (_gpsReport != null)
-                          Positioned(
-                            bottom: 12,
-                            left: 14,
-                            right: 14,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: 0.7),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    _gpsReport!.isMock
-                                        ? CupertinoIcons.exclamationmark_triangle_fill
-                                        : CupertinoIcons.location_solid,
-                                    color: _gpsReport!.isMock
-                                        ? AppColors.orangeWarning
-                                        : AppColors.buttonLokasi,
-                                    size: 14,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      _gpsReport!.isMock
-                                          ? '⚠️ Mock Location Aktif (Audit Tagged)'
-                                          : 'GPS: ${_gpsReport!.latitude.toStringAsFixed(4)}, ${_gpsReport!.longitude.toStringAsFixed(4)} (±${_gpsReport!.accuracy.toStringAsFixed(1)}m)',
-                                      style: TextStyle(
-                                        color: _gpsReport!.isMock
-                                            ? AppColors.orangeWarning
-                                            : Colors.white70,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
                       ],
                     ),
                   ),
@@ -381,74 +355,39 @@ class _ScanProductsScreenState extends State<ScanProductsScreen>
               ),
             ),
 
-            // Bottom Action Area: Tombol "FOTO" & "Lokasi" (Matching image copy.png)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
-              child: Row(
-                children: [
-                  // Wide Button: FOTO (#707BFB / Lavender-Indigo)
-                  Expanded(
-                    flex: 7,
-                    child: SizedBox(
-                      height: 54,
-                      child: ElevatedButton(
-                        onPressed: _isProcessingCapture ? null : _handleCaptureFoto,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.buttonFoto,
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                        child: _isProcessingCapture
-                            ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(
-                                  color: Colors.white,
-                                  strokeWidth: 2.5,
-                                ),
-                              )
-                            : const Text(
-                                'FOTO',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                      ),
+              child: SizedBox(
+                width: double.infinity,
+                height: 54,
+                child: ElevatedButton(
+                  onPressed: _isProcessingCapture ? null : _handleCaptureFoto,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.buttonFoto,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
                     ),
                   ),
-                  const SizedBox(width: 12),
-
-                  // Secondary Button: Lokasi (#8D99EE)
-                  Expanded(
-                    flex: 3,
-                    child: SizedBox(
-                      height: 54,
-                      child: ElevatedButton(
-                        onPressed: _handleOpenLokasi,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.buttonLokasiBg,
-                          foregroundColor: const Color(0xFF1E2235),
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
+                  child: _isProcessingCapture
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2.5,
                           ),
-                        ),
-                        child: const Text(
-                          'Lokasi',
+                        )
+                      : const Text(
+                          'FOTO',
                           style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.5,
                           ),
                         ),
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ],
@@ -457,7 +396,6 @@ class _ScanProductsScreenState extends State<ScanProductsScreen>
     );
   }
 
-  // Dynamic Camera Viewport (Active scanning background when physical camera is absent on desktop)
   Widget _buildDynamicCameraViewport() {
     return Container(
       decoration: const BoxDecoration(
@@ -507,7 +445,7 @@ class _ScanProductsScreenState extends State<ScanProductsScreen>
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 32),
               child: Text(
-                'Arahkan kamera ke tumpukan barang gudang lalu tekan FOTO',
+                'Arahkan kamera lalu tekan FOTO',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.white60,
@@ -522,11 +460,8 @@ class _ScanProductsScreenState extends State<ScanProductsScreen>
   }
 }
 
-// Reticle Corners & YOLO Bounding Boxes Painter
 class _CameraReticlePainter extends CustomPainter {
-  final List<DetectedObject> detectedObjects;
-
-  _CameraReticlePainter({required this.detectedObjects});
+  const _CameraReticlePainter();
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -538,10 +473,8 @@ class _CameraReticlePainter extends CustomPainter {
     const cornerLength = 28.0;
     const cornerRadius = 12.0;
 
-    // Viewfinder corners
     final rect = Rect.fromLTWH(18, 18, size.width - 36, size.height - 36);
 
-    // Top Left
     final pathTL = Path()
       ..moveTo(rect.left, rect.top + cornerLength)
       ..lineTo(rect.left, rect.top + cornerRadius)
@@ -549,7 +482,6 @@ class _CameraReticlePainter extends CustomPainter {
       ..lineTo(rect.left + cornerLength, rect.top);
     canvas.drawPath(pathTL, reticlePaint);
 
-    // Top Right
     final pathTR = Path()
       ..moveTo(rect.right - cornerLength, rect.top)
       ..lineTo(rect.right - cornerRadius, rect.top)
@@ -557,7 +489,6 @@ class _CameraReticlePainter extends CustomPainter {
       ..lineTo(rect.right, rect.top + cornerLength);
     canvas.drawPath(pathTR, reticlePaint);
 
-    // Bottom Left
     final pathBL = Path()
       ..moveTo(rect.left, rect.bottom - cornerLength)
       ..lineTo(rect.left, rect.bottom - cornerRadius)
@@ -565,38 +496,14 @@ class _CameraReticlePainter extends CustomPainter {
       ..lineTo(rect.left + cornerLength, rect.bottom);
     canvas.drawPath(pathBL, reticlePaint);
 
-    // Bottom Right
     final pathBR = Path()
       ..moveTo(rect.right - cornerLength, rect.bottom)
       ..lineTo(rect.right - cornerRadius, rect.bottom)
       ..arcToPoint(Offset(rect.right, rect.bottom - cornerRadius), radius: const Radius.circular(cornerRadius))
       ..lineTo(rect.right, rect.bottom - cornerLength);
     canvas.drawPath(pathBR, reticlePaint);
-
-    // Bounding Boxes for detected objects
-    final boxPaint = Paint()
-      ..color = AppColors.buttonFoto.withValues(alpha: 0.85)
-      ..strokeWidth = 2
-      ..style = PaintingStyle.stroke;
-
-    final fillPaint = Paint()
-      ..color = AppColors.buttonFoto.withValues(alpha: 0.15)
-      ..style = PaintingStyle.fill;
-
-    for (var obj in detectedObjects) {
-      final objRect = Rect.fromLTWH(
-        (obj.x / 320) * (size.width - 40) + 20,
-        (obj.y / 480) * (size.height - 80) + 40,
-        (obj.width / 320) * (size.width - 40),
-        (obj.height / 480) * (size.height - 80),
-      );
-      canvas.drawRRect(RRect.fromRectAndRadius(objRect, const Radius.circular(6)), fillPaint);
-      canvas.drawRRect(RRect.fromRectAndRadius(objRect, const Radius.circular(6)), boxPaint);
-    }
   }
 
   @override
-  bool shouldRepaint(covariant _CameraReticlePainter oldDelegate) {
-    return oldDelegate.detectedObjects != detectedObjects;
-  }
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

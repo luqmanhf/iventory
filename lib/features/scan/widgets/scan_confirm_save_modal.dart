@@ -7,14 +7,14 @@ import '../../../core/theme/app_theme.dart';
 
 class ScanConfirmSaveModal extends StatefulWidget {
   final String imagePath;
-  final int detectedCount;
+  final int initialQuantity;
   final GpsSecurityReport? gpsReport;
   final VoidCallback onSaved;
 
   const ScanConfirmSaveModal({
     super.key,
     required this.imagePath,
-    required this.detectedCount,
+    this.initialQuantity = 1,
     this.gpsReport,
     required this.onSaved,
   });
@@ -22,7 +22,7 @@ class ScanConfirmSaveModal extends StatefulWidget {
   static Future<void> show(
     BuildContext context, {
     required String imagePath,
-    required int detectedCount,
+    int initialQuantity = 1,
     GpsSecurityReport? gpsReport,
     required VoidCallback onSaved,
   }) {
@@ -32,7 +32,7 @@ class ScanConfirmSaveModal extends StatefulWidget {
       backgroundColor: Colors.transparent,
       builder: (_) => ScanConfirmSaveModal(
         imagePath: imagePath,
-        detectedCount: detectedCount,
+        initialQuantity: initialQuantity,
         gpsReport: gpsReport,
         onSaved: onSaved,
       ),
@@ -49,43 +49,35 @@ class _ScanConfirmSaveModalState extends State<ScanConfirmSaveModal> {
   late TextEditingController _packageController;
   late TextEditingController _expController;
 
-  String _selectedCategory = 'Sembako';
+  String _selectedCategory = 'Elektronik';
   String _selectedWarehouse = 'Gudang Utama';
-  String _selectedUnit = 'karung';
+  String _selectedUnit = 'Karung';
 
   final List<String> _categories = [
     'Sembako',
-    'Beverages',
-    'Snacks',
-    'Dairy',
-    'Confectionery',
-    'Vegetables',
-    'Fruits',
+    'Elektronik',
+    'Snack',
   ];
 
   final List<String> _warehouses = [
     'Gudang Utama',
-    'Warehouse A',
-    'Warehouse B',
-    'Warehouse C',
-    'Cold Room 1',
+    'Gudang A',
+    'Gudang B',
+    'Gudang C',
   ];
 
   final List<String> _units = [
-    'karung',
-    'cases',
-    'karton',
-    'bags',
-    'boxes',
-    'units',
-    'peti',
+    'Karung',
+    'Box',
+    'Unit',
+    'Peti',
   ];
 
   @override
   void initState() {
     super.initState();
-    _quantity = widget.detectedCount > 0 ? widget.detectedCount : 10;
-    _nameController = TextEditingController(text: 'Produk Baru (Scan)');
+    _quantity = widget.initialQuantity > 0 ? widget.initialQuantity : 1;
+    _nameController = TextEditingController(text: '');
     _packageController = TextEditingController(text: 'Kemasan Standar');
     _expController = TextEditingController(text: '12/27');
   }
@@ -131,9 +123,9 @@ class _ScanConfirmSaveModalState extends State<ScanConfirmSaveModal> {
     final bool hasFile = file.existsSync();
 
     return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      decoration: BoxDecoration(
+        color: AppColors.getSurface(context),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       ),
       padding: EdgeInsets.only(
         left: 20,
@@ -146,79 +138,75 @@ class _ScanConfirmSaveModalState extends State<ScanConfirmSaveModal> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Handle bar
             Center(
               child: Container(
                 width: 44,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: AppColors.border,
+                  color: AppColors.getBorder(context),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
             ),
             const SizedBox(height: 16),
 
-            // Title Row
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
+                Text(
                   'Simpan Hasil Pindaian',
                   style: TextStyle(
-                    color: AppColors.textPrimary,
+                    color: AppColors.getTextPrimary(context),
                     fontSize: 20,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
                 IconButton(
                   onPressed: () => Navigator.pop(context),
-                  icon: const Icon(CupertinoIcons.xmark_circle_fill, color: AppColors.textMuted, size: 26),
+                  icon: Icon(CupertinoIcons.xmark_circle_fill, color: AppColors.getTextMuted(context), size: 26),
                 ),
               ],
             ),
             const SizedBox(height: 12),
 
-            // Captured Photo Preview (Requirement 2: Displays saved picture!)
             Container(
               width: double.infinity,
               height: 160,
               decoration: BoxDecoration(
-                color: AppColors.surfaceCard,
+                color: AppColors.getSurfaceCard(context),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.border),
+                border: Border.all(color: AppColors.getBorder(context)),
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(16),
                 child: hasFile
                     ? Image.file(file, fit: BoxFit.cover)
                     : Container(
-                        color: AppColors.surfaceLight,
-                        child: const Center(
-                          child: Icon(CupertinoIcons.photo, size: 40, color: AppColors.textMuted),
+                        color: AppColors.getSurfaceLight(context),
+                        child: Center(
+                          child: Icon(CupertinoIcons.photo, size: 40, color: AppColors.getTextMuted(context)),
                         ),
                       ),
               ),
             ),
             const SizedBox(height: 12),
 
-            // AI Detection Chip
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                color: AppColors.buttonFoto.withValues(alpha: 0.15),
+                color: AppColors.buttonFoto.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: AppColors.buttonFoto.withValues(alpha: 0.3)),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.auto_awesome, color: AppColors.buttonFoto, size: 18),
-                  const SizedBox(width: 8),
+                  const Icon(CupertinoIcons.camera_fill, color: AppColors.buttonFoto, size: 18),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'AI YOLOv8 Menghitung: ${widget.detectedCount} Objek Terdeteksi',
-                      style: const TextStyle(
-                        color: AppColors.textPrimary,
+                      'Masukkan Detail Barang',
+                      style: TextStyle(
+                        color: AppColors.getTextPrimary(context),
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
                       ),
@@ -230,38 +218,46 @@ class _ScanConfirmSaveModalState extends State<ScanConfirmSaveModal> {
 
             const SizedBox(height: 16),
 
-            // Name Field
-            const Text('Nama Barang', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+            Text('Nama Barang', style: TextStyle(color: AppColors.getTextSecondary(context), fontSize: 13)),
             const SizedBox(height: 6),
             TextField(
               controller: _nameController,
-              style: const TextStyle(color: AppColors.textPrimary),
+              style: TextStyle(color: AppColors.getTextPrimary(context)),
               decoration: InputDecoration(
                 filled: true,
-                fillColor: AppColors.surfaceCard,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.border)),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.border)),
+                fillColor: AppColors.getSurfaceCard(context),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: AppColors.getBorder(context)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: AppColors.getBorder(context)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: AppColors.buttonFoto, width: 1.5),
+                ),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               ),
             ),
 
             const SizedBox(height: 14),
 
-            // Dynamic Quantity Stepper (Requirement 1)
             Row(
               children: [
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Jumlah Stok (Dinamis)', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                      Text('Jumlah Stok', style: TextStyle(color: AppColors.getTextSecondary(context), fontSize: 13)),
                       const SizedBox(height: 6),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: AppColors.surfaceCard,
+                          color: AppColors.getSurfaceCard(context),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppColors.border),
+                          border: Border.all(color: AppColors.getBorder(context)),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -270,19 +266,19 @@ class _ScanConfirmSaveModalState extends State<ScanConfirmSaveModal> {
                               onPressed: () {
                                 if (_quantity > 1) setState(() => _quantity--);
                               },
-                              icon: const Icon(CupertinoIcons.minus, color: AppColors.textPrimary, size: 18),
+                              icon: Icon(CupertinoIcons.minus, color: AppColors.getTextPrimary(context), size: 18),
                             ),
                             Text(
                               '$_quantity',
-                              style: const TextStyle(
-                                color: AppColors.textPrimary,
+                              style: TextStyle(
+                                color: AppColors.getTextPrimary(context),
                                 fontSize: 18,
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
                             IconButton(
                               onPressed: () => setState(() => _quantity++),
-                              icon: const Icon(CupertinoIcons.plus, color: AppColors.textPrimary, size: 18),
+                              icon: Icon(CupertinoIcons.plus, color: AppColors.getTextPrimary(context), size: 18),
                             ),
                           ],
                         ),
@@ -295,21 +291,21 @@ class _ScanConfirmSaveModalState extends State<ScanConfirmSaveModal> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Satuan', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                      Text('Satuan', style: TextStyle(color: AppColors.getTextSecondary(context), fontSize: 13)),
                       const SizedBox(height: 6),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         decoration: BoxDecoration(
-                          color: AppColors.surfaceCard,
+                          color: AppColors.getSurfaceCard(context),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppColors.border),
+                          border: Border.all(color: AppColors.getBorder(context)),
                         ),
                         child: DropdownButtonHideUnderline(
                           child: DropdownButton<String>(
                             value: _selectedUnit,
                             isExpanded: true,
-                            dropdownColor: AppColors.surfaceCard,
-                            style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
+                            dropdownColor: AppColors.getSurfaceCard(context),
+                            style: TextStyle(color: AppColors.getTextPrimary(context), fontSize: 14),
                             items: _units.map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
                             onChanged: (val) {
                               if (val != null) setState(() => _selectedUnit = val);
@@ -325,28 +321,27 @@ class _ScanConfirmSaveModalState extends State<ScanConfirmSaveModal> {
 
             const SizedBox(height: 14),
 
-            // Category & Warehouse Dropdowns
             Row(
               children: [
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Kategori', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                      Text('Kategori', style: TextStyle(color: AppColors.getTextSecondary(context), fontSize: 13)),
                       const SizedBox(height: 6),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         decoration: BoxDecoration(
-                          color: AppColors.surfaceCard,
+                          color: AppColors.getSurfaceCard(context),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppColors.border),
+                          border: Border.all(color: AppColors.getBorder(context)),
                         ),
                         child: DropdownButtonHideUnderline(
                           child: DropdownButton<String>(
                             value: _selectedCategory,
                             isExpanded: true,
-                            dropdownColor: AppColors.surfaceCard,
-                            style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
+                            dropdownColor: AppColors.getSurfaceCard(context),
+                            style: TextStyle(color: AppColors.getTextPrimary(context), fontSize: 14),
                             items: _categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
                             onChanged: (val) {
                               if (val != null) setState(() => _selectedCategory = val);
@@ -362,21 +357,21 @@ class _ScanConfirmSaveModalState extends State<ScanConfirmSaveModal> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Lokasi Gudang', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                      Text('Lokasi Gudang', style: TextStyle(color: AppColors.getTextSecondary(context), fontSize: 13)),
                       const SizedBox(height: 6),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         decoration: BoxDecoration(
-                          color: AppColors.surfaceCard,
+                          color: AppColors.getSurfaceCard(context),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppColors.border),
+                          border: Border.all(color: AppColors.getBorder(context)),
                         ),
                         child: DropdownButtonHideUnderline(
                           child: DropdownButton<String>(
                             value: _selectedWarehouse,
                             isExpanded: true,
-                            dropdownColor: AppColors.surfaceCard,
-                            style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
+                            dropdownColor: AppColors.getSurfaceCard(context),
+                            style: TextStyle(color: AppColors.getTextPrimary(context), fontSize: 14),
                             items: _warehouses.map((w) => DropdownMenuItem(value: w, child: Text(w))).toList(),
                             onChanged: (val) {
                               if (val != null) setState(() => _selectedWarehouse = val);
@@ -392,7 +387,6 @@ class _ScanConfirmSaveModalState extends State<ScanConfirmSaveModal> {
 
             const SizedBox(height: 20),
 
-            // Submit Button
             SizedBox(
               width: double.infinity,
               height: 52,
@@ -405,7 +399,7 @@ class _ScanConfirmSaveModalState extends State<ScanConfirmSaveModal> {
                   elevation: 0,
                 ),
                 child: const Text(
-                  'Simpan ke Inventaris & Tampilkan Foto',
+                  'Simpan',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                 ),
               ),

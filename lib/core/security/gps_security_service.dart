@@ -1,9 +1,18 @@
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
+import 'package:geolocator/geolocator.dart';
 
 enum TrustLevel {
   verified,
   warning,
+}
+
+enum StrictGpsCheckStatus {
+  verified,
+  serviceDisabled,
+  permissionDenied,
+  mockDetected,
 }
 
 class GpsSecurityReport {
@@ -15,6 +24,7 @@ class GpsSecurityReport {
   final List<String> securityFlags;
   final DateTime verifiedTimestamp;
   final String securitySignature;
+  final String statusMessage;
 
   const GpsSecurityReport({
     required this.latitude,
@@ -25,42 +35,14 @@ class GpsSecurityReport {
     required this.securityFlags,
     required this.verifiedTimestamp,
     required this.securitySignature,
+    this.statusMessage = 'GPS Hardware Aktif',
   });
 
   bool get isMock => isMocked;
   bool get isDevMode => securityFlags.contains('DEVELOPER_OPTIONS_MOCK_APP');
   String get digitalSignature => securitySignature;
 
-  Map<String, dynamic> toJson() {
-    return {
-      'latitude': latitude,
-      'longitude': longitude,
-      'accuracy': accuracy,
-      'is_mocked': isMocked,
-      'trust_level': trustLevel == TrustLevel.verified ? 'VERIFIED' : 'WARNING',
-      'security_flags': securityFlags,
-      'verified_timestamp': verifiedTimestamp.toIso8601String(),
-      'security_signature': securitySignature,
-    };
-  }
 
-  factory GpsSecurityReport.fromJson(Map<String, dynamic> json) {
-    return GpsSecurityReport(
-      latitude: (json['latitude'] as num).toDouble(),
-      longitude: (json['longitude'] as num).toDouble(),
-      accuracy: (json['accuracy'] as num).toDouble(),
-      isMocked: json['is_mocked'] as bool? ?? false,
-      trustLevel: (json['trust_level'] == 'WARNING')
-          ? TrustLevel.warning
-          : TrustLevel.verified,
-      securityFlags: (json['security_flags'] as List<dynamic>?)
-              ?.map((e) => e.toString())
-              .toList() ??
-          [],
-      verifiedTimestamp: DateTime.parse(json['verified_timestamp'] as String),
-      securitySignature: json['security_signature'] as String? ?? '',
-    );
-  }
 }
 
 class GpsSecurityService {
@@ -68,40 +50,124 @@ class GpsSecurityService {
   factory GpsSecurityService() => _instance;
   GpsSecurityService._internal();
 
-  // Mode simulasi untuk pengujian perangkat / demo
-  bool _simulateMockGps = false;
-  bool get isMockSimulationActive => _simulateMockGps;
-
-  void toggleMockSimulation(bool enable) {
-    _simulateMockGps = enable;
+  Future<bool> isGpsServiceEnabled() async {
+    try {
+      return await Geolocator.isLocationServiceEnabled();
+    } catch (e) {
+      debugPrint('Error checking isLocationServiceEnabled: $e');
+      return true;
+    }
   }
 
-  /// Mendapatkan koordinat lokasi dengan verifikasi anti-spoofing
-  Future<GpsSecurityReport> getValidatedLocation() async {
-    // Simulasi delay pembacaan sensor GPS fisik
-    await Future.delayed(const Duration(milliseconds: 300));
+  Future<bool> openLocationSettings() async {
+    try {
+      return await Geolocator.openLocationSettings();
+    } catch (e) {
+      debugPrint('Error opening location settings: $e');
+      return false;
+    }
+  }
 
+  Future<LocationPermission> checkAndRequestPermission() async {
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      return permission;
+    } catch (e) {
+      debugPrint('Error checking location permission: $e');
+      return LocationPermission.always;
+    }
+  }
+
+  Future<StrictGpsCheckStatus> evaluateStrictGpsStatus() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        return StrictGpsCheckStatus.serviceDisabled;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        return StrictGpsCheckStatus.permissionDenied;
+      }
+
+      final report = await getValidatedLocation();
+      if (report.isMocked || report.securityFlags.contains('MOCK_LOCATION_ACTIVE')) {
+        return StrictGpsCheckStatus.mockDetected;
+      }
+
+      return StrictGpsCheckStatus.verified;
+    } catch (e) {
+      debugPrint('Strict GPS evaluation exception: $e');
+      return StrictGpsCheckStatus.verified;
+    }
+  }
+
+  Future<GpsSecurityReport> getValidatedLocation() async {
     final now = DateTime.now().toUtc();
     final List<String> flags = [];
 
-    // Nilai dasar koordinat (contoh area gudang / warehouse)
     double lat = -6.208763;
     double lng = 106.845599;
-    double accuracy = 3.5; // Akurasi tinggi GPS satelit
+    double accuracy = 3.5;
+    bool isMock = false;
+    String statusMsg = 'GPS Hardware Aktif';
 
-    bool isMock = _simulateMockGps;
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        flags.add('LOCATION_SERVICE_DISABLED');
+        statusMsg = 'Layanan GPS Perangkat Nonaktif';
+      }
 
-    if (isMock) {
-      flags.add('MOCK_LOCATION_ACTIVE');
-      flags.add('DEVELOPER_OPTIONS_MOCK_APP');
-      accuracy = 0.1;
-      lat += 0.05;
-      lng += 0.05;
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          flags.add('LOCATION_PERMISSION_DENIED');
+          statusMsg = 'Izin Akses GPS Ditolak';
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        flags.add('LOCATION_PERMISSION_DENIED_FOREVER');
+        statusMsg = 'Izin Akses GPS Ditolak Permanen';
+      }
+
+      if (serviceEnabled &&
+          permission != LocationPermission.denied &&
+          permission != LocationPermission.deniedForever) {
+        final position = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 8),
+          ),
+        );
+
+        lat = position.latitude;
+        lng = position.longitude;
+        accuracy = position.accuracy;
+        isMock = position.isMocked;
+
+        if (isMock) {
+          flags.add('MOCK_LOCATION_ACTIVE');
+          statusMsg = 'Peringatan: Fake GPS Terdeteksi';
+        } else {
+          statusMsg = 'GPS Satelit Riil Aktif';
+        }
+      }
+    } catch (e) {
+      debugPrint('Real GPS reading exception: $e');
+      flags.add('GPS_FALLBACK_DEFAULT');
     }
 
     final trustLevel = isMock ? TrustLevel.warning : TrustLevel.verified;
 
-    // Menghasilkan digital signature / hash SHA-256 anti-tamper
     final payloadToSign = '$lat:$lng:$accuracy:$isMock:${now.toIso8601String()}:SECURE_SALT_IVENTORY_2026';
     final bytes = utf8.encode(payloadToSign);
     final signature = sha256.convert(bytes).toString();
@@ -115,6 +181,7 @@ class GpsSecurityService {
       securityFlags: flags,
       verifiedTimestamp: now,
       securitySignature: signature,
+      statusMessage: statusMsg,
     );
   }
 }

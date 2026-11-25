@@ -12,11 +12,18 @@ class IventoryApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Iventory',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.darkTheme,
-      home: const MainNavigationShell(),
+    return ListenableBuilder(
+      listenable: ThemeController.instance,
+      builder: (context, _) {
+        return MaterialApp(
+          title: 'Iventory',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          themeMode: ThemeController.instance.themeMode,
+          home: const MainNavigationShell(),
+        );
+      },
     );
   }
 }

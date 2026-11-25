@@ -19,101 +19,307 @@ class InventoryScreen extends StatefulWidget {
 }
 
 class _InventoryScreenState extends State<InventoryScreen> {
-  String _selectedFilter = 'All Items';
+  String? _selectedUnit;
+  String? _selectedCategory;
+  String? _selectedWarehouse;
 
-  void _showExportCsvModal(BuildContext context, String csvData) {
+  bool get _isFilterActive =>
+      _selectedUnit != null ||
+      _selectedCategory != null ||
+      _selectedWarehouse != null;
+
+  void _clearFilters() {
+    setState(() {
+      _selectedUnit = null;
+      _selectedCategory = null;
+      _selectedWarehouse = null;
+    });
+  }
+
+  void _showFilterSettingModal(BuildContext context, List<InventoryItem> allItems) {
+    final units = allItems
+        .map((e) => e.unit.trim())
+        .where((e) => e.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+
+    final categories = allItems
+        .map((e) => e.category.trim())
+        .where((e) => e.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+
+    final warehouses = allItems
+        .map((e) => e.warehouse.trim())
+        .where((e) => e.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+
+    String? tempUnit = _selectedUnit;
+    String? tempCategory = _selectedCategory;
+    String? tempWarehouse = _selectedWarehouse;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => Container(
-        padding: const EdgeInsets.all(20),
-        decoration: const BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.border,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) {
+          return Container(
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 14,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 24,
             ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Row(
-                  children: [
-                    Icon(CupertinoIcons.doc_text_fill, color: AppColors.buttonFoto),
-                    SizedBox(width: 8),
-                    Text(
-                      'Ekspor Data Inventaris (CSV)',
-                      style: TextStyle(
-                        color: AppColors.textPrimary,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
+            decoration: BoxDecoration(
+              color: AppColors.getSurface(context),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 42,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AppColors.getBorder(context),
+                        borderRadius: BorderRadius.circular(2),
                       ),
                     ),
-                  ],
-                ),
-                IconButton(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(CupertinoIcons.xmark_circle_fill, color: AppColors.textMuted),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Container(
-              height: 180,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.background,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: SingleChildScrollView(
-                child: Text(
-                  csvData,
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
-                    fontFamily: 'monospace',
-                    fontSize: 11,
                   ),
-                ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(
+                            CupertinoIcons.slider_horizontal_3,
+                            color: AppColors.buttonFoto,
+                            size: 22,
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            'Filter Inventaris',
+                            style: TextStyle(
+                              color: AppColors.getTextPrimary(context),
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: Icon(
+                          CupertinoIcons.xmark_circle_fill,
+                          color: AppColors.getTextMuted(context),
+                          size: 24,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+
+                  // Section 1: Satuan
+                  _buildFilterSectionTitle(context, 'Satuan', tempUnit),
+                  const SizedBox(height: 8),
+                  _buildDropdownSelector(
+                    context: context,
+                    hint: 'Semua Satuan',
+                    value: tempUnit,
+                    items: units,
+                    onChanged: (val) {
+                      setModalState(() => tempUnit = val);
+                    },
+                  ),
+
+                  const SizedBox(height: 18),
+
+                  // Section 2: Kategori
+                  _buildFilterSectionTitle(context, 'Kategori', tempCategory),
+                  const SizedBox(height: 8),
+                  _buildDropdownSelector(
+                    context: context,
+                    hint: 'Semua Kategori',
+                    value: tempCategory,
+                    items: categories,
+                    onChanged: (val) {
+                      setModalState(() => tempCategory = val);
+                    },
+                  ),
+
+                  const SizedBox(height: 18),
+
+                  // Section 3: Lokasi Gudang
+                  _buildFilterSectionTitle(context, 'Lokasi Gudang', tempWarehouse),
+                  const SizedBox(height: 8),
+                  _buildDropdownSelector(
+                    context: context,
+                    hint: 'Semua Lokasi Gudang',
+                    value: tempWarehouse,
+                    items: warehouses,
+                    onChanged: (val) {
+                      setModalState(() => tempWarehouse = val);
+                    },
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () {
+                            setModalState(() {
+                              tempUnit = null;
+                              tempCategory = null;
+                              tempWarehouse = null;
+                            });
+                            setState(() {
+                              _selectedUnit = null;
+                              _selectedCategory = null;
+                              _selectedWarehouse = null;
+                            });
+                            Navigator.pop(context);
+                          },
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            side: BorderSide(color: AppColors.getBorder(context)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Text(
+                            'Reset Filter',
+                            style: TextStyle(
+                              color: AppColors.getTextSecondary(context),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () {
+                            setState(() {
+                              _selectedUnit = tempUnit;
+                              _selectedCategory = tempCategory;
+                              _selectedWarehouse = tempWarehouse;
+                            });
+                            Navigator.pop(context);
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.buttonFoto,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 0,
+                          ),
+                          child: const Text(
+                            'Terapkan Filter',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('✅ Data CSV berhasil disalin ke memori/clipboard.'),
-                      duration: Duration(seconds: 2),
-                    ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.buttonFoto,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                icon: const Icon(CupertinoIcons.share, size: 18),
-                label: const Text('Salin / Bagikan CSV', style: TextStyle(fontWeight: FontWeight.w700)),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildFilterSectionTitle(BuildContext context, String title, String? activeValue) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            color: AppColors.getTextSecondary(context),
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        if (activeValue != null)
+          Text(
+            activeValue,
+            style: const TextStyle(
+              color: AppColors.buttonFoto,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildDropdownSelector({
+    required BuildContext context,
+    required String hint,
+    required String? value,
+    required List<String> items,
+    required ValueChanged<String?> onChanged,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColors.getSurfaceCard(context),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: value != null ? AppColors.buttonFoto : AppColors.getBorder(context),
+          width: value != null ? 1.5 : 1,
+        ),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String?>(
+          value: value,
+          isExpanded: true,
+          hint: Text(
+            hint,
+            style: TextStyle(color: AppColors.getTextMuted(context), fontSize: 14),
+          ),
+          dropdownColor: AppColors.getSurfaceCard(context),
+          style: TextStyle(
+            color: AppColors.getTextPrimary(context),
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+          icon: Icon(
+            CupertinoIcons.chevron_down,
+            size: 16,
+            color: AppColors.getTextSecondary(context),
+          ),
+          items: [
+            DropdownMenuItem<String?>(
+              value: null,
+              child: Text(
+                hint,
+                style: TextStyle(color: AppColors.getTextMuted(context), fontSize: 14),
+              ),
+            ),
+            ...items.map(
+              (item) => DropdownMenuItem<String?>(
+                value: item,
+                child: Text(item),
               ),
             ),
           ],
+          onChanged: onChanged,
         ),
       ),
     );
@@ -128,53 +334,102 @@ class _InventoryScreenState extends State<InventoryScreen> {
       builder: (context, _) {
         final allItems = repo.items;
 
-        // Filter items based on selected chip
         final filteredItems = allItems.where((item) {
-          if (_selectedFilter == 'Low Stock') {
-            return item.isLowStock;
-          } else if (_selectedFilter == 'Sale Stock') {
-            return item.isForSale;
+          if (_selectedUnit != null &&
+              item.unit.toLowerCase() != _selectedUnit!.toLowerCase()) {
+            return false;
           }
-          return true; // All Items
+          if (_selectedCategory != null &&
+              item.category.toLowerCase() != _selectedCategory!.toLowerCase()) {
+            return false;
+          }
+          if (_selectedWarehouse != null &&
+              item.warehouse.toLowerCase() != _selectedWarehouse!.toLowerCase()) {
+            return false;
+          }
+          return true;
         }).toList();
 
-        final totalActiveCount = allItems.fold(0, (sum, i) => sum + i.quantity);
+        final totalActiveCount = filteredItems.fold(0, (sum, i) => sum + i.quantity);
 
         return Scaffold(
-          backgroundColor: AppColors.background,
+          backgroundColor: AppColors.getBackground(context),
           body: SafeArea(
             child: ListView(
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
               children: [
-                // Header: Back Arrow [<] & Title "Inventory" (Matching image copy 2.png)
                 Row(
                   children: [
                     Container(
                       width: 40,
                       height: 40,
                       decoration: BoxDecoration(
-                        color: AppColors.surfaceCard,
+                        color: AppColors.getSurfaceCard(context),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: AppColors.border),
+                        border: Border.all(color: AppColors.getBorder(context)),
                       ),
                       child: IconButton(
                         padding: EdgeInsets.zero,
                         onPressed: widget.onBack ?? () {},
-                        icon: const Icon(
+                        icon: Icon(
                           CupertinoIcons.chevron_back,
-                          color: AppColors.textPrimary,
+                          color: AppColors.getTextPrimary(context),
                           size: 20,
                         ),
                       ),
                     ),
                     const SizedBox(width: 14),
-                    const Text(
+                    Text(
                       'Inventory',
                       style: TextStyle(
-                        color: AppColors.textPrimary,
+                        color: AppColors.getTextPrimary(context),
                         fontSize: 22,
                         fontWeight: FontWeight.w800,
                         letterSpacing: -0.5,
+                      ),
+                    ),
+                    const Spacer(),
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: AppColors.getSurfaceCard(context),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: _isFilterActive
+                              ? AppColors.buttonFoto
+                              : AppColors.getBorder(context),
+                        ),
+                      ),
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          IconButton(
+                            padding: EdgeInsets.zero,
+                            tooltip: 'Filter Inventaris',
+                            onPressed: () => _showFilterSettingModal(context, allItems),
+                            icon: Icon(
+                              CupertinoIcons.slider_horizontal_3,
+                              color: _isFilterActive
+                                  ? AppColors.buttonFoto
+                                  : AppColors.getTextPrimary(context),
+                              size: 20,
+                            ),
+                          ),
+                          if (_isFilterActive)
+                            Positioned(
+                              top: 8,
+                              right: 8,
+                              child: Container(
+                                width: 7,
+                                height: 7,
+                                decoration: const BoxDecoration(
+                                  color: AppColors.buttonFoto,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                   ],
@@ -182,80 +437,41 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
                 const SizedBox(height: 18),
 
-                // Filter Chips Row (Matching image copy 2.png)
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _buildFilterChip('All Items', hasCheckmark: true),
-                      const SizedBox(width: 10),
-                      _buildFilterChip('Low Stock'),
-                      const SizedBox(width: 10),
-                      _buildFilterChip('Sale Stock'),
-                    ],
-                  ),
-                ),
+                _buildSingleSummaryCard(repo, context),
 
-                const SizedBox(height: 18),
+                if (_isFilterActive) ...[
+                  const SizedBox(height: 14),
+                  _buildActiveFilterBar(context),
+                ],
 
-                // 3-Column Metric Card: OUT OF STOCK | LOW STOCK | TOTAL ITEMS (Matching image copy 2.png)
-                _buildMetricCard(repo),
+                const SizedBox(height: 20),
 
-                const SizedBox(height: 24),
-
-                // Section Header: ACTIVE INVENTORY & Export CSV > (Matching image copy 2.png)
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      children: [
-                        const Text(
-                          'ACTIVE INVENTORY',
-                          style: TextStyle(
-                            color: AppColors.textPrimary,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: AppColors.surfaceLight,
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: AppColors.border),
-                          ),
-                          child: Text(
-                            totalActiveCount.toString(),
-                            style: const TextStyle(
-                              color: AppColors.textSecondary,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ],
+                    Text(
+                      'ACTIVE INVENTORY',
+                      style: TextStyle(
+                        color: AppColors.getTextPrimary(context),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5,
+                      ),
                     ),
-                    GestureDetector(
-                      onTap: () => _showExportCsvModal(context, repo.generateCsv()),
-                      child: const Row(
-                        children: [
-                          Text(
-                            'Export CSV',
-                            style: TextStyle(
-                              color: AppColors.buttonFoto,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          SizedBox(width: 4),
-                          Icon(
-                            CupertinoIcons.chevron_right,
-                            color: AppColors.buttonFoto,
-                            size: 13,
-                          ),
-                        ],
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppColors.getSurfaceLight(context),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: AppColors.getBorder(context)),
+                      ),
+                      child: Text(
+                        totalActiveCount.toString(),
+                        style: TextStyle(
+                          color: AppColors.getTextSecondary(context),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ],
@@ -263,8 +479,36 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
                 const SizedBox(height: 14),
 
-                // Inventory Item Cards (Matching image copy 2.png + Requirements 1 & 2)
-                ...filteredItems.map((item) => _buildInventoryCard(context, item)),
+                if (filteredItems.isEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 20),
+                    alignment: Alignment.center,
+                    child: Column(
+                      children: [
+                        Icon(
+                          CupertinoIcons.tray,
+                          size: 42,
+                          color: AppColors.getTextMuted(context),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Tidak ada barang yang cocok dengan filter',
+                          style: TextStyle(
+                            color: AppColors.getTextSecondary(context),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TextButton(
+                          onPressed: _clearFilters,
+                          child: const Text('Reset Filter'),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  ...filteredItems.map((item) => _buildInventoryCard(context, item)),
 
                 const SizedBox(height: 32),
               ],
@@ -275,118 +519,50 @@ class _InventoryScreenState extends State<InventoryScreen> {
     );
   }
 
-  // Filter Chip Widget
-  Widget _buildFilterChip(String label, {bool hasCheckmark = false}) {
-    final isSelected = _selectedFilter == label;
-    return GestureDetector(
-      onTap: () => setState(() => _selectedFilter = label),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF1E2235) : AppColors.surfaceCard,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: isSelected ? AppColors.buttonFoto : AppColors.border,
-            width: isSelected ? 1.5 : 1,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (isSelected && hasCheckmark) ...[
-              const Icon(CupertinoIcons.checkmark, color: AppColors.buttonFoto, size: 14),
-              const SizedBox(width: 6),
-            ],
-            Text(
-              label,
-              style: TextStyle(
-                color: isSelected ? Colors.white : AppColors.textSecondary,
-                fontSize: 13,
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // 3-Column Metric Card: OUT OF STOCK | LOW STOCK | TOTAL ITEMS
-  Widget _buildMetricCard(InventoryRepository repo) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surfaceCard,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: IntrinsicHeight(
-        child: Row(
-          children: [
-            // OUT OF STOCK
-            Expanded(
-              child: _buildMetricItem(
-                label: 'OUT OF STOCK',
-                value: repo.outOfStockCount.toString(),
-              ),
-            ),
-            const VerticalDivider(color: AppColors.border, width: 1, thickness: 1),
-
-            // LOW STOCK
-            Expanded(
-              child: _buildMetricItem(
-                label: 'LOW STOCK',
-                value: repo.lowStockCount.toString(),
-              ),
-            ),
-            const VerticalDivider(color: AppColors.border, width: 1, thickness: 1),
-
-            // TOTAL ITEMS
-            Expanded(
-              child: _buildMetricItem(
-                label: 'TOTAL ITEMS',
-                value: repo.totalItemsCount.toString(),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMetricItem({required String label, required String value}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildActiveFilterBar(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
         children: [
-          Row(
-            children: [
-              Flexible(
-                child: Text(
-                  label,
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 9.5,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.2,
-                  ),
+          if (_selectedUnit != null)
+            _buildActiveChip(
+              context,
+              label: 'Satuan: $_selectedUnit',
+              onDeleted: () => setState(() => _selectedUnit = null),
+            ),
+          if (_selectedCategory != null) ...[
+            const SizedBox(width: 8),
+            _buildActiveChip(
+              context,
+              label: 'Kategori: $_selectedCategory',
+              onDeleted: () => setState(() => _selectedCategory = null),
+            ),
+          ],
+          if (_selectedWarehouse != null) ...[
+            const SizedBox(width: 8),
+            _buildActiveChip(
+              context,
+              label: 'Gudang: $_selectedWarehouse',
+              onDeleted: () => setState(() => _selectedWarehouse = null),
+            ),
+          ],
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: _clearFilters,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppColors.red.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text(
+                'Hapus Semua',
+                style: TextStyle(
+                  color: AppColors.red,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-              const SizedBox(width: 4),
-              const Icon(
-                CupertinoIcons.info_circle,
-                color: AppColors.textMuted,
-                size: 11,
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
             ),
           ),
         ],
@@ -394,7 +570,92 @@ class _InventoryScreenState extends State<InventoryScreen> {
     );
   }
 
-  // Inventory List Item Card (Matching image copy 2.png)
+  Widget _buildActiveChip(
+    BuildContext context, {
+    required String label,
+    required VoidCallback onDeleted,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.buttonFoto.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: AppColors.buttonFoto.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.buttonFoto,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(width: 6),
+          GestureDetector(
+            onTap: onDeleted,
+            child: const Icon(
+              CupertinoIcons.xmark_circle_fill,
+              size: 14,
+              color: AppColors.buttonFoto,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSingleSummaryCard(InventoryRepository repo, BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: AppColors.getSurfaceCard(context),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.getBorder(context)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  'TOTAL ITEMS',
+                  style: TextStyle(
+                    color: AppColors.getTextSecondary(context),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(
+                  CupertinoIcons.info_circle,
+                  color: AppColors.getTextMuted(context),
+                  size: 11,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              repo.totalItemsCount.toString(),
+              style: TextStyle(
+                color: AppColors.getTextPrimary(context),
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildInventoryCard(BuildContext context, InventoryItem item) {
     final hasPhoto = item.imagePath != null &&
         item.imagePath!.isNotEmpty &&
@@ -403,28 +664,26 @@ class _InventoryScreenState extends State<InventoryScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: AppColors.surfaceCard,
+        color: AppColors.getSurfaceCard(context),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: AppColors.getBorder(context)),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
         onTap: () {
-          // Open detail & dynamic stock edit modal
           ItemDetailEditModal.show(context, item);
         },
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           child: Row(
             children: [
-              // Saved Photo Thumbnail (Requirement 2)
               Container(
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: AppColors.surfaceLight,
+                  color: AppColors.getSurfaceLight(context),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppColors.border),
+                  border: Border.all(color: AppColors.getBorder(context)),
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(10),
@@ -434,22 +693,21 @@ class _InventoryScreenState extends State<InventoryScreen> {
                           fit: BoxFit.cover,
                           width: 48,
                           height: 48,
-                          errorBuilder: (_, _, _) => _buildPatternThumbnail(),
+                          errorBuilder: (_, _, _) => _buildPatternThumbnail(context),
                         )
-                      : _buildPatternThumbnail(),
+                      : _buildPatternThumbnail(context),
                 ),
               ),
               const SizedBox(width: 14),
 
-              // Product Info & Subtitle lines
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       item.name,
-                      style: const TextStyle(
-                        color: AppColors.textPrimary,
+                      style: TextStyle(
+                        color: AppColors.getTextPrimary(context),
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
                       ),
@@ -457,16 +715,16 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     const SizedBox(height: 3),
                     Text(
                       '${item.category} · ${item.warehouse}',
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
+                      style: TextStyle(
+                        color: AppColors.getTextSecondary(context),
                         fontSize: 13,
                       ),
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      '${item.quantity} ${item.unit} · ${item.packageDetail} · Exp ${item.expirationDate}',
-                      style: const TextStyle(
-                        color: AppColors.textMuted,
+                      '${item.quantity} ${item.unit} · ${item.packageDetail}',
+                      style: TextStyle(
+                        color: AppColors.getTextMuted(context),
                         fontSize: 12,
                       ),
                     ),
@@ -474,10 +732,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
                 ),
               ),
 
-              // Chevron Right >
-              const Icon(
+              Icon(
                 CupertinoIcons.chevron_right,
-                color: AppColors.textMuted,
+                color: AppColors.getTextMuted(context),
                 size: 16,
               ),
             ],
@@ -487,13 +744,13 @@ class _InventoryScreenState extends State<InventoryScreen> {
     );
   }
 
-  Widget _buildPatternThumbnail() {
+  Widget _buildPatternThumbnail(BuildContext context) {
     return Container(
-      color: const Color(0xFF242730),
-      child: const Center(
+      color: AppColors.getThumbnailBg(context),
+      child: Center(
         child: Icon(
           CupertinoIcons.cube_box,
-          color: Color(0xFF5A5E6B),
+          color: AppColors.getThumbnailIcon(context),
           size: 22,
         ),
       ),

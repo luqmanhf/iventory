@@ -498,8 +498,6 @@ class _ItemDetailEditModalState extends State<ItemDetailEditModal> {
               ),
               child: Column(
                 children: [
-                  _buildMetaRow(context, 'Detail Kemasan', widget.item.packageDetail.isNotEmpty ? widget.item.packageDetail : '-'),
-                  Divider(color: AppColors.getBorder(context), height: 18),
                   _buildMetaRow(context, 'Satuan', widget.item.unit.isNotEmpty ? widget.item.unit : '-'),
                   Divider(color: AppColors.getBorder(context), height: 18),
                   _buildMetaRow(context, 'Terakhir Diperbarui', timeFormat.format(widget.item.updatedAt)),
